@@ -1,2 +1,2 @@
-# code
-code
+-- check "SCRIPT FOR RBLX" 
+-- USE AT YOUR OWN RISK
