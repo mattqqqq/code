@@ -1,0 +1,680 @@
+-- Simple script to display an interface in Drillzone and scale hitboxes/prompts.
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+print("DEBUG: Script started!")
+
+-- Locate PlayerGui directly
+local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+if not PlayerGui then 
+	print("DEBUG: PlayerGui not found!")
+	return 
+end
+
+print("DEBUG: PlayerGui found!")
+
+-- Remove any old versions to avoid overlapping
+if PlayerGui:FindFirstChild("DrillzoneMasterGui") then
+	PlayerGui.DrillzoneMasterGui:Destroy()
+	print("DEBUG: Destroyed old DrillzoneMasterGui")
+end
+
+-- Store all connections to disconnect later
+local allConnections = {}
+
+-- 1. BUILD THE UI
+local DrillzoneMasterGui = Instance.new("ScreenGui")
+DrillzoneMasterGui.Name = "DrillzoneMasterGui"
+DrillzoneMasterGui.ResetOnSpawn = false
+DrillzoneMasterGui.Parent = PlayerGui
+
+local ControlPanel = Instance.new("Frame")
+ControlPanel.Name = "ControlPanel"
+ControlPanel.Size = UDim2.new(0, 220, 0, 340)
+ControlPanel.Position = UDim2.new(0, 50, 0, 200)
+ControlPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+ControlPanel.BorderSizePixel = 1
+ControlPanel.BorderColor3 = Color3.fromRGB(100, 100, 100)
+ControlPanel.Active = true
+ControlPanel.Draggable = true
+ControlPanel.Parent = DrillzoneMasterGui
+
+-- Title Bar
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -50, 0, 25)
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.Text = "Drillzone Master"
+Title.TextColor3 = Color3.fromRGB(255, 50, 50)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Title.BorderSizePixel = 0
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Center
+Title.Parent = ControlPanel
+
+-- Minimize Button [-]
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.new(0, 25, 0, 25)
+MinimizeButton.Position = UDim2.new(1, -50, 0, 0)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 50)
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.Font = Enum.Font.SourceSansBold
+MinimizeButton.TextSize = 18
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Parent = ControlPanel
+
+-- Close Button [X]
+local KillButton = Instance.new("TextButton")
+KillButton.Name = "KillButton"
+KillButton.Size = UDim2.new(0, 25, 0, 25)
+KillButton.Position = UDim2.new(1, -25, 0, 0)
+KillButton.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+KillButton.Text = "X"
+KillButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+KillButton.Font = Enum.Font.SourceSansBold
+KillButton.TextSize = 14
+KillButton.BorderSizePixel = 0
+KillButton.Parent = ControlPanel
+
+-- Content Frame (all buttons go here)
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, 0, 1, -25)
+ContentFrame.Position = UDim2.new(0, 0, 0, 25)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.BorderSizePixel = 0
+ContentFrame.Parent = ControlPanel
+
+-- Notification Label
+local NotificationLabel = Instance.new("TextLabel")
+NotificationLabel.Name = "NotificationLabel"
+NotificationLabel.Size = UDim2.new(0, 300, 0, 60)
+NotificationLabel.Position = UDim2.new(0.5, -150, 0, 100)
+NotificationLabel.Text = ""
+NotificationLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+NotificationLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+NotificationLabel.BorderColor3 = Color3.fromRGB(200, 200, 0)
+NotificationLabel.BorderSizePixel = 2
+NotificationLabel.Font = Enum.Font.Gotham
+NotificationLabel.TextSize = 14
+NotificationLabel.TextWrapped = true
+NotificationLabel.Visible = false
+NotificationLabel.ZIndex = 100
+NotificationLabel.Parent = PlayerGui
+
+-- Create buttons manually
+local yOffset = 5
+local buttonHeight = 28
+local spacing = 3
+
+local function createButton(text, bgColor, yPos)
+	local button = Instance.new("TextButton")
+	button.Name = text
+	button.Size = UDim2.new(1, -10, 0, buttonHeight)
+	button.Position = UDim2.new(0, 5, 0, yPos)
+	button.Text = text
+	button.BackgroundColor3 = bgColor
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.Font = Enum.Font.Gotham
+	button.TextSize = 11
+	button.BorderSizePixel = 0
+	button.Parent = ContentFrame
+	return button
+end
+
+local function createLabel(text, color, yPos)
+	local label = Instance.new("TextLabel")
+	label.Name = text .. "Label"
+	label.Size = UDim2.new(1, -10, 0, 18)
+	label.Position = UDim2.new(0, 5, 0, yPos)
+	label.Text = "  " .. text
+	label.TextColor3 = color
+	label.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.BorderSizePixel = 0
+	label.Parent = ContentFrame
+	return label
+end
+
+local function createInput(placeholder, yPos)
+	local input = Instance.new("TextBox")
+	input.Name = placeholder
+	input.Size = UDim2.new(1, -10, 0, buttonHeight)
+	input.Position = UDim2.new(0, 5, 0, yPos)
+	input.PlaceholderText = placeholder
+	input.Text = ""
+	input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	input.TextColor3 = Color3.fromRGB(255, 255, 255)
+	input.Font = Enum.Font.Gotham
+	input.TextSize = 11
+	input.BorderSizePixel = 0
+	input.Parent = ContentFrame
+	return input
+end
+
+-- Build UI
+yOffset = 5
+createLabel("ESP", Color3.fromRGB(255, 150, 150), yOffset)
+yOffset = yOffset + 18 + spacing
+
+local EspButton = createButton("ESP Outline: OFF", Color3.fromRGB(120, 40, 40), yOffset)
+yOffset = yOffset + buttonHeight + spacing
+
+local EspInfoButton = createButton("ESP Info: OFF", Color3.fromRGB(120, 40, 40), yOffset)
+yOffset = yOffset + buttonHeight + spacing + 5
+
+createLabel("Hitbox", Color3.fromRGB(150, 200, 255), yOffset)
+yOffset = yOffset + 18 + spacing
+
+local SizeInput = createInput("Hitbox Size", yOffset)
+yOffset = yOffset + buttonHeight + spacing
+
+local ToggleButton = createButton("Hitbox Extender: OFF", Color3.fromRGB(120, 40, 40), yOffset)
+yOffset = yOffset + buttonHeight + spacing
+
+local ModeButton = createButton("Target: TORSO", Color3.fromRGB(45, 60, 80), yOffset)
+yOffset = yOffset + buttonHeight + spacing + 5
+
+createLabel("Other", Color3.fromRGB(200, 200, 150), yOffset)
+yOffset = yOffset + 18 + spacing
+
+local PromptButton = createButton("Instant Prompts: OFF", Color3.fromRGB(120, 40, 40), yOffset)
+yOffset = yOffset + buttonHeight + spacing
+
+local ToggleUIButton = createButton("Toggle UI: P", Color3.fromRGB(80, 80, 120), yOffset)
+
+-- ===== ESP INFO DISPLAY ON SCREEN =====
+local ESPInfoDisplay = Instance.new("ScreenGui")
+ESPInfoDisplay.Name = "ESPInfoDisplay"
+ESPInfoDisplay.ResetOnSpawn = false
+ESPInfoDisplay.Parent = PlayerGui
+
+-- 2. CONTROL STATE VARIABLES
+local hitboxSize = 0
+local extenderEnabled = false
+local espEnabled = false
+local espInfoMode = 0
+local instantPromptsEnabled = false
+local scriptRunning = true
+local targetMode = "Torso"
+local uiMinimized = false
+local toggleUIKeybind = Enum.KeyCode.P
+local waitingForKeybind = false
+
+local originalPromptDurations = {}
+
+local function safeCall(func, errorMsg)
+	local success, error = pcall(func)
+	if not success then
+		print("DEBUG: ERROR -", errorMsg, "-", error)
+	end
+	return success
+end
+
+local function removeAllHitboxes()
+	safeCall(function()
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p and p.Character then
+				for _, child in ipairs(p.Character:GetChildren()) do
+					if child and child.Name:match("^XenoExtendedHitbox") then
+						child:Destroy()
+					end
+				end
+			end
+		end
+	end, "removeAllHitboxes")
+end
+
+local function removeAllESP()
+	safeCall(function()
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p and p.Character then
+				for _, child in ipairs(p.Character:GetChildren()) do
+					if child and child.Name == "XenoESP" then
+						child:Destroy()
+					end
+				end
+			end
+		end
+	end, "removeAllESP")
+end
+
+local function recreateAllESP()
+	if not espEnabled then return end
+	
+	safeCall(function()
+		removeAllESP()
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p and p ~= LocalPlayer and p.Character then
+				local char = p.Character
+				local humanoid = char:FindFirstChildOfClass("Humanoid")
+				
+				if humanoid and humanoid.Health > 0 then
+					local highlight = Instance.new("Highlight")
+					highlight.Name = "XenoESP"
+					highlight.FillColor = Color3.fromRGB(255, 0, 0)
+					highlight.FillTransparency = 0.8
+					highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+					highlight.OutlineTransparency = 0
+					highlight.Parent = char
+				end
+			end
+		end
+	end, "recreateAllESP")
+end
+
+local function updateESPInfoDisplay()
+	safeCall(function()
+		for _, child in ipairs(ESPInfoDisplay:GetChildren()) do
+			if child then
+				child:Destroy()
+			end
+		end
+		
+		if espInfoMode > 0 and espEnabled then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p and p ~= LocalPlayer and p.Character then
+					local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
+					if humanoid and humanoid.Health > 0 then
+						local headPart = p.Character:FindFirstChild("Head") or p.Character:FindFirstChild("UpperTorso")
+						if headPart then
+							local textLabel = Instance.new("TextLabel")
+							textLabel.Name = "ESPInfo_" .. p.Name
+							textLabel.BackgroundTransparency = 1
+							textLabel.TextScaled = true
+							textLabel.Font = Enum.Font.GothamBold
+							textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+							textLabel.TextStrokeTransparency = 0.5
+							textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+							textLabel.Parent = ESPInfoDisplay
+							
+							local infoText = ""
+							if espInfoMode == 1 then
+								infoText = p.Name
+							elseif espInfoMode == 2 then
+								infoText = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+							elseif espInfoMode == 3 then
+								infoText = p.Name .. "\n[" .. math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) .. "]"
+							end
+							
+							textLabel.Text = infoText
+							textLabel.Size = UDim2.new(0, 100, 0, 35)
+						end
+					end
+				end
+			end
+		end
+	end, "updateESPInfoDisplay")
+end
+
+local function restorePromptDurations()
+	safeCall(function()
+		for prompt, duration in pairs(originalPromptDurations) do
+			if prompt and prompt.Parent then
+				prompt.HoldDuration = duration
+			end
+		end
+		table.clear(originalPromptDurations)
+	end, "restorePromptDurations")
+end
+
+local function minimizeUI()
+	uiMinimized = true
+	ControlPanel.Size = UDim2.new(0, 220, 0, 25)
+	ContentFrame.Visible = false
+	MinimizeButton.Text = "+"
+	NotificationLabel.Text = "UI is hidden, press '" .. tostring(toggleUIKeybind):gsub("Enum.KeyCode.", "") .. "' to show the UI"
+	NotificationLabel.Visible = true
+	task.wait(5)
+	if NotificationLabel and NotificationLabel.Parent then
+		NotificationLabel.Visible = false
+	end
+end
+
+local function maximizeUI()
+	uiMinimized = false
+	ControlPanel.Size = UDim2.new(0, 220, 0, 340)
+	ContentFrame.Visible = true
+	MinimizeButton.Text = "-"
+end
+
+local function killScript()
+	print("DEBUG: KILLING SCRIPT")
+	scriptRunning = false
+	
+	for i, connection in ipairs(allConnections) do
+		if connection then
+			pcall(function()
+				connection:Disconnect()
+			end)
+		end
+		allConnections[i] = nil
+	end
+	
+	removeAllHitboxes()
+	removeAllESP()
+	restorePromptDurations()
+	
+	if DrillzoneMasterGui and DrillzoneMasterGui.Parent then
+		DrillzoneMasterGui:Destroy()
+	end
+	if ESPInfoDisplay and ESPInfoDisplay.Parent then
+		ESPInfoDisplay:Destroy()
+	end
+	if NotificationLabel and NotificationLabel.Parent then
+		NotificationLabel:Destroy()
+	end
+	
+	print("DEBUG: SCRIPT KILLED")
+end
+
+-- Button Connections
+table.insert(allConnections, SizeInput.FocusLost:Connect(function()
+	if not scriptRunning then return end
+	hitboxSize = tonumber(SizeInput.Text) or 0
+	print("DEBUG: hitboxSize set to:", hitboxSize)
+end))
+
+table.insert(allConnections, MinimizeButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	if uiMinimized then
+		maximizeUI()
+	else
+		task.spawn(function() minimizeUI() end)
+	end
+end))
+
+table.insert(allConnections, ModeButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	safeCall(function()
+		removeAllHitboxes()
+		
+		if targetMode == "Torso" then
+			targetMode = "Head"
+			ModeButton.Text = "Target: HEAD"
+		else
+			targetMode = "Torso"
+			ModeButton.Text = "Target: TORSO"
+		end
+	end, "ModeButton")
+end))
+
+table.insert(allConnections, EspButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	safeCall(function()
+		espEnabled = not espEnabled
+		if espEnabled then
+			EspButton.Text = "ESP Outline: ON"
+			EspButton.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+			recreateAllESP()
+			updateESPInfoDisplay()
+		else
+			EspButton.Text = "ESP Outline: OFF"
+			EspButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+			removeAllESP()
+			updateESPInfoDisplay()
+		end
+	end, "EspButton")
+end))
+
+table.insert(allConnections, EspInfoButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	safeCall(function()
+		espInfoMode = espInfoMode + 1
+		if espInfoMode > 3 then espInfoMode = 0 end
+		
+		if espInfoMode == 0 then
+			EspInfoButton.Text = "ESP Info: OFF"
+			EspInfoButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+		elseif espInfoMode == 1 then
+			EspInfoButton.Text = "ESP Info: NAME"
+			EspInfoButton.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+		elseif espInfoMode == 2 then
+			EspInfoButton.Text = "ESP Info: HEALTH"
+			EspInfoButton.BackgroundColor3 = Color3.fromRGB(40, 100, 120)
+		elseif espInfoMode == 3 then
+			EspInfoButton.Text = "ESP Info: BOTH"
+			EspInfoButton.BackgroundColor3 = Color3.fromRGB(120, 100, 40)
+		end
+		
+		updateESPInfoDisplay()
+	end, "EspInfoButton")
+end))
+
+table.insert(allConnections, ToggleButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	safeCall(function()
+		extenderEnabled = not extenderEnabled
+		if extenderEnabled then
+			ToggleButton.Text = "Hitbox Extender: ON"
+			ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+		else
+			ToggleButton.Text = "Hitbox Extender: OFF"
+			ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+			removeAllHitboxes()
+		end
+	end, "ToggleButton")
+end))
+
+table.insert(allConnections, PromptButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	safeCall(function()
+		instantPromptsEnabled = not instantPromptsEnabled
+		if instantPromptsEnabled then
+			PromptButton.Text = "Instant Prompts: ON"
+			PromptButton.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+		else
+			PromptButton.Text = "Instant Prompts: OFF"
+			PromptButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+			restorePromptDurations()
+		end
+	end, "PromptButton")
+end))
+
+table.insert(allConnections, ToggleUIButton.MouseButton1Click:Connect(function()
+	if not scriptRunning then return end
+	if not waitingForKeybind then
+		waitingForKeybind = true
+		ToggleUIButton.Text = "Press Key..."
+		ToggleUIButton.BackgroundColor3 = Color3.fromRGB(200, 150, 0)
+	end
+end))
+
+table.insert(allConnections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not scriptRunning then return end
+	if waitingForKeybind and input.UserInputType == Enum.UserInputType.Keyboard then
+		toggleUIKeybind = input.KeyCode
+		ToggleUIButton.Text = "Toggle UI: " .. tostring(toggleUIKeybind):gsub("Enum.KeyCode.", "")
+		ToggleUIButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+		waitingForKeybind = false
+		print("DEBUG: Keybind set to:", toggleUIKeybind)
+	elseif input.KeyCode == toggleUIKeybind and not gameProcessed and not waitingForKeybind then
+		if uiMinimized then
+			maximizeUI()
+		else
+			task.spawn(function() minimizeUI() end)
+		end
+	end
+end))
+
+table.insert(allConnections, KillButton.MouseButton1Click:Connect(function()
+	killScript()
+end))
+
+table.insert(allConnections, Players.PlayerRemoving:Connect(function(player)
+	if not scriptRunning then return end
+	safeCall(function()
+		if player and player.Character then
+			for _, child in ipairs(player.Character:GetChildren()) do
+				if child and child.Name:match("^XenoExtendedHitbox") then
+					child:Destroy()
+				end
+			end
+		end
+	end, "PlayerRemoving")
+end))
+
+table.insert(allConnections, Players.PlayerAdded:Connect(function(player)
+	if not scriptRunning then return end
+	task.wait(0.5)
+	safeCall(function()
+		if player and player.Character then
+			recreateAllESP()
+			updateESPInfoDisplay()
+		end
+	end, "PlayerAdded")
+end))
+
+for _, player in pairs(Players:GetPlayers()) do
+	if player then
+		table.insert(allConnections, player.CharacterAdded:Connect(function()
+			if not scriptRunning then return end
+			task.wait(0.5)
+			safeCall(function()
+				recreateAllESP()
+				updateESPInfoDisplay()
+			end, "CharacterAdded")
+		end))
+	end
+end
+
+table.insert(allConnections, Players.PlayerAdded:Connect(function(player)
+	if not scriptRunning then return end
+	table.insert(allConnections, player.CharacterAdded:Connect(function()
+		if not scriptRunning then return end
+		task.wait(0.5)
+		safeCall(function()
+			recreateAllESP()
+			updateESPInfoDisplay()
+		end, "PlayerAdded_CharacterAdded")
+	end))
+end))
+
+table.insert(allConnections, game:GetService("ProximityPromptService").PromptShown:Connect(function(prompt)
+	if not scriptRunning or not instantPromptsEnabled then return end
+	safeCall(function()
+		if prompt and not originalPromptDurations[prompt] then
+			originalPromptDurations[prompt] = prompt.HoldDuration
+		end
+		if prompt then
+			prompt.HoldDuration = 0
+		end
+	end, "PromptShown")
+end))
+
+local lastESPRecreate = 0
+local lastHitboxUpdate = 0
+table.insert(allConnections, RunService.Heartbeat:Connect(function()
+	if not scriptRunning then return end
+	
+	safeCall(function()
+		local currentTime = tick()
+		
+		-- Recreate ESP every 1 second
+		if currentTime - lastESPRecreate > 1 and espEnabled then
+			lastESPRecreate = currentTime
+			recreateAllESP()
+		end
+		
+		-- Update ESP info display
+		if espInfoMode > 0 and espEnabled then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p and p ~= LocalPlayer and p.Character then
+					local label = ESPInfoDisplay:FindFirstChild("ESPInfo_" .. p.Name)
+					local headPart = p.Character:FindFirstChild("Head") or p.Character:FindFirstChild("UpperTorso")
+					local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
+					
+					if label and headPart and humanoid then
+						local infoText = ""
+						if espInfoMode == 1 then
+							infoText = p.Name
+						elseif espInfoMode == 2 then
+							infoText = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+						elseif espInfoMode == 3 then
+							infoText = p.Name .. "\n[" .. math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) .. "]"
+						end
+						label.Text = infoText
+						
+						local camera = workspace.CurrentCamera
+						local headScreenPos, onScreen = camera:WorldToScreenPoint(headPart.Position + Vector3.new(0, 3, 0))
+						
+						if onScreen then
+							label.Position = UDim2.new(0, headScreenPos.X - 50, 0, headScreenPos.Y - 50)
+							label.Visible = true
+						else
+							label.Visible = false
+						end
+					end
+				end
+			end
+		end
+		
+		-- Update hitboxes - optimized for performance
+		if extenderEnabled and hitboxSize > 0 and currentTime - lastHitboxUpdate > 0.15 then
+			lastHitboxUpdate = currentTime
+			
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p and p ~= LocalPlayer and p.Character then
+					local char = p.Character
+					local humanoid = char:FindFirstChildOfClass("Humanoid")
+					
+					if humanoid and humanoid.Health > 0 then
+						local targetParts = {}
+						
+						-- Collect parts to create hitboxes for
+						if targetMode == "Head" then
+							local head = char:FindFirstChild("Head")
+							if head then table.insert(targetParts, head) end
+						else
+							local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+							if torso then table.insert(targetParts, torso) end
+						end
+						
+						-- Create or update hitbox for each target part
+						for _, targetPart in ipairs(targetParts) do
+							if targetPart then
+								local hitboxName = "XenoExtendedHitbox_" .. targetPart.Name
+								local hitbox = char:FindFirstChild(hitboxName)
+								
+								if not hitbox then
+									hitbox = Instance.new("Part")
+									hitbox.Name = hitboxName
+									hitbox.Shape = Enum.PartType.Block
+									hitbox.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+									hitbox.Color = Color3.fromRGB(255, 0, 0)
+									hitbox.Transparency = 0.4
+									hitbox.CanCollide = false
+									hitbox.Massless = true
+									hitbox.TopSurface = Enum.SurfaceType.Smooth
+									hitbox.BottomSurface = Enum.SurfaceType.Smooth
+									hitbox.CFrame = targetPart.CFrame
+									hitbox.Parent = char
+									
+									-- Weld the hitbox to the target part
+									local weld = Instance.new("WeldConstraint")
+									weld.Part0 = targetPart
+									weld.Part1 = hitbox
+									weld.Parent = hitbox
+								else
+									-- Update hitbox size
+									if hitbox.Size ~= Vector3.new(hitboxSize, hitboxSize, hitboxSize) then
+										hitbox.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end, "Heartbeat")
+end))
+
+print("DEBUG: Script ready!")
